@@ -30,6 +30,7 @@ class VigenereCipher : public Cipher {
      * \brief Set the key to be used for the encryption/decryption
      *
      * \param key the key to use in the cipher
+     * \exception InvalidKey will be emitted if no key is supplied
      */
     void setKey(const std::string& key);
 

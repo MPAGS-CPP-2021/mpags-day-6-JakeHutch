@@ -10,6 +10,7 @@ add_library(MPAGSCipher STATIC
   CipherFactory.cpp
   CipherMode.hpp
   CipherType.hpp
+  CustomExceptions.hpp
   PlayfairCipher.hpp
   PlayfairCipher.cpp
   ProcessCommandLine.hpp
@@ -23,6 +24,8 @@ add_library(MPAGSCipher STATIC
 target_include_directories(MPAGSCipher
   PUBLIC ${CMAKE_CURRENT_LIST_DIR}
   )
+
+
 target_compile_features(MPAGSCipher
   PUBLIC cxx_std_17
   )

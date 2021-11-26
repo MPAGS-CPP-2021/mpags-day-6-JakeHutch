@@ -3,12 +3,15 @@
 #include "CipherType.hpp"
 #include "ProcessCommandLine.hpp"
 #include "TransformChar.hpp"
+#include "CustomExceptions.hpp"
 
 #include <cctype>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
+#include <future>
+#include <thread>
 
 int main(int argc, char* argv[])
 {
@@ -20,13 +23,25 @@ int main(int argc, char* argv[])
         false, false, "", "", "", CipherMode::Encrypt, CipherType::Caesar};
 
     // Process command line arguments
-    const bool cmdLineStatus{processCommandLine(cmdLineArgs, settings)};
-
-    // Any failure in the argument processing means we can't continue
-    // Use a non-zero return value to indicate failure
-    if (!cmdLineStatus) {
+    try {
+        processCommandLine(cmdLineArgs, settings);
+    }catch (const MissingArgument& e){
+        std::cerr << "[error] Missing argument: " << e.what() << std::endl;
+        return 1;
+    }catch (const UnknownArgument& e){
+        std::cerr << "[error] Unknown argument: " << e.what() << std::endl;
+        return 1;
+    }catch (const InvalidKey& e){
+        std::cerr << "[error] Invalid Key: " << e.what() << std::endl;
         return 1;
     }
+    
+
+    // // Any failure in the argument processing means we can't continue
+    // // Use a non-zero return value to indicate failure
+    // if (!cmdLineStatus) {
+    //     return 1;
+    // }
 
     // Handle help, if requested
     if (settings.helpRequested) {
@@ -81,6 +96,7 @@ int main(int argc, char* argv[])
             inputText += transformChar(inputChar);
         }
 
+
     } else {
         // Loop over each character from user input
         // (until Return then CTRL-D (EOF) pressed)
@@ -89,8 +105,15 @@ int main(int argc, char* argv[])
         }
     }
 
+    std::unique_ptr<Cipher> cipher ;
     // Request construction of the appropriate cipher
-    auto cipher = cipherFactory(settings.cipherType, settings.cipherKey);
+    try {
+        cipher = cipherFactory(settings.cipherType, settings.cipherKey);
+    }catch (const InvalidKey& e){
+        std::cerr << "[error] Invalid Key: " << e.what() << std::endl;
+        return 1;
+    }
+    
 
     // Check that the cipher was constructed successfully
     if (!cipher) {
@@ -99,8 +122,56 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // Run the cipher on the input text, specifying whether to encrypt/decrypt
-    const std::string outputText{cipher->applyCipher(inputText, settings.cipherMode)};
+    // create variable to hold the number of threads we want to use and teh length of the input string
+    std::size_t inputLength {inputText.size()};
+    std::size_t numThreads {4};
+    std::string outputText {""};
+
+    //split inputText into chunks 
+    std::vector<std::string> inputChunks {};
+    for (std::size_t i{0}; i < numThreads; ++i) {
+        if (i+1 == numThreads){
+            inputChunks.push_back(inputText.substr( i * (inputLength/numThreads) , inputLength/numThreads + inputLength%numThreads));
+        }else {inputChunks.push_back(inputText.substr( i * (inputLength/numThreads) , inputLength/numThreads));
+        }
+    }
+
+    // // create lambda funtion for applying cipher
+    // std::string applyCipherToChunk = [&] (const std::unique_ptr<Cipher>& cipherChunk, const std::string& inputChunk) {
+    //    return cipherChunk->applyCipher(inputChunk, settings.cipherMode); 
+    // };
+
+    //loop over all threads
+    std::vector< std::future< std::string > > futures;
+    for (std::size_t i{0}; i < numThreads; ++i) {
+        futures.push_back( std::async(std::launch::async,[&inputChunks, i, &cipher, &settings] (){
+            return cipher->applyCipher(inputChunks[i], settings.cipherMode);
+        } ));
+    }
+
+    // for (std::size_t i{0}; i < numThreads; ++i) {
+    //     futures[i].wait_for(std::chrono::seconds(10));
+    //     outputText+= futures[i].get();
+    // }
+    
+    bool complete {false};
+    do {
+        complete = true ; 
+        for (auto& future : futures) {
+            auto status = future.wait_for(std::chrono::seconds(10));
+            if (status != std::future_status::ready){
+                complete = false ; 
+            }
+        }
+    } while (!complete);
+
+    for (auto& future : futures ) {
+        outputText += future.get();
+    }
+
+
+    // // Run the cipher on the input text, specifying whether to encrypt/decrypt
+    // const std::string outputText{cipher->applyCipher(inputText, settings.cipherMode)};
 
     // Output the encrypted/decrypted text to stdout/file
     if (!settings.outputFile.empty()) {
