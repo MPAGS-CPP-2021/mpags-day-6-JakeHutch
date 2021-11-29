@@ -31,3 +31,6 @@ add_subdirectory(Testing)
 #   and link it to the MPAGSCipher library
 add_executable(mpags-cipher mpags-cipher.cpp)
 target_link_libraries(mpags-cipher PRIVATE MPAGSCipher)
+ 
+find_package( Threads )
+target_link_libraries(mpags-cipher PRIVATE MPAGSCipher ${CMAKE_THREAD_LIBS_INIT})
